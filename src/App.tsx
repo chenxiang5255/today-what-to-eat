@@ -100,13 +100,15 @@ export default function App() {
     const saved = localStorage.getItem('diet_logs');
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        const today = new Date().setHours(0, 0, 0, 0);
-        return parsed.filter((log: any) => new Date(log.timestamp).setHours(0, 0, 0, 0) === today);
+        return JSON.parse(saved);
       } catch (e) {}
     }
     return [];
   });
+
+  const [selectedDate, setSelectedDate] = useState<number>(() => new Date().setHours(0, 0, 0, 0));
+  const [currentYear, setCurrentYear] = useState(() => new Date().getFullYear());
+  const [currentMonth, setCurrentMonth] = useState(() => new Date().getMonth());
 
   const [fridgeItems, setFridgeItems] = useState<string[]>(() => {
     const saved = localStorage.getItem('fitlife_fridge');
@@ -146,6 +148,11 @@ export default function App() {
   // 添加打卡
   const addMealLog = (food: Omit<FoodItem, 'id' | 'isFatLossFriendly' | 'category'>, amount: number, mealType: MealType) => {
     const factor = amount / food.servingSize;
+    // 使用选中日期作为基准，加上当前时间的时分秒，保留日志的时间先后顺序
+    const todayStartLocal = new Date().setHours(0, 0, 0, 0);
+    const timeOffset = Date.now() - todayStartLocal;
+    const logTimestamp = selectedDate + timeOffset;
+
     const newLog: MealLog = {
       id: Math.random().toString(36).substr(2, 9),
       foodName: food.name,
@@ -155,19 +162,30 @@ export default function App() {
       fat: parseFloat((food.fat * factor).toFixed(1)),
       amount,
       mealType,
-      timestamp: Date.now(),
+      timestamp: logTimestamp,
     };
     setLogs(prev => [newLog, ...prev]);
   };
 
   const deleteLog = (id: string) => { setLogs(prev => prev.filter(log => log.id !== id)); };
-  const clearAllLogs = () => { if (window.confirm('确认清除今日所有饮食记录吗？')) setLogs([]); };
+  const clearTodayLogs = () => {
+    if (window.confirm('确认清除今日所有饮食记录吗？')) {
+      const today = new Date().setHours(0, 0, 0, 0);
+      setLogs(prev => prev.filter(log => new Date(log.timestamp).setHours(0, 0, 0, 0) !== today));
+    }
+  };
 
-  // 控制台计算
-  const totalCalories = logs.reduce((sum, log) => sum + log.calories, 0);
-  const totalProtein = logs.reduce((sum, log) => sum + log.protein, 0);
-  const totalCarbs = logs.reduce((sum, log) => sum + log.carbs, 0);
-  const totalFat = logs.reduce((sum, log) => sum + log.fat, 0);
+  // 区分今天和选择日期
+  const todayStart = React.useMemo(() => new Date().setHours(0, 0, 0, 0), []);
+  const todayLogs = React.useMemo(() => {
+    return logs.filter(log => new Date(log.timestamp).setHours(0, 0, 0, 0) === todayStart);
+  }, [logs, todayStart]);
+
+  // 今日控制台计算 (Dashboard)
+  const totalCalories = todayLogs.reduce((sum, log) => sum + log.calories, 0);
+  const totalProtein = todayLogs.reduce((sum, log) => sum + log.protein, 0);
+  const totalCarbs = todayLogs.reduce((sum, log) => sum + log.carbs, 0);
+  const totalFat = todayLogs.reduce((sum, log) => sum + log.fat, 0);
 
   const caloriePercentage = Math.min(100, Math.round((totalCalories / profile.calorieBudget) * 100));
   const proteinPercentage = Math.min(100, Math.round((totalProtein / profile.proteinTarget) * 100));
@@ -178,7 +196,7 @@ export default function App() {
   const loggedAlerts = React.useMemo(() => {
     const alerts: { foodName: string; score: 1 | 2; type: 'low-fat' | 'gastric'; reason: string }[] = [];
     
-    logs.forEach(log => {
+    todayLogs.forEach(log => {
       if (profile.lowFatCholesterolDiet) {
         const check = checkLowFatSafety(log.foodName);
         if (check.score === 1 || check.score === 2) {
@@ -204,7 +222,7 @@ export default function App() {
     });
 
     return alerts;
-  }, [logs, profile.lowFatCholesterolDiet, profile.gastricFriendlyDiet]);
+  }, [todayLogs, profile.lowFatCholesterolDiet, profile.gastricFriendlyDiet]);
 
   // 大转盘逻辑
   const [wheelFoodPool, setWheelFoodPool] = useState<FoodItem[]>([]);
@@ -1283,9 +1301,9 @@ export default function App() {
                 <h4 style={{ fontSize: '14px', fontWeight: '700', borderLeft: '3px solid var(--neon-cyan)', paddingLeft: '8px' }}>
                   今日已吃饮食明细
                 </h4>
-                {logs.length > 0 && (
+                {todayLogs.length > 0 && (
                   <button 
-                    onClick={clearAllLogs}
+                    onClick={clearTodayLogs}
                     style={{ background: 'none', border: 'none', color: 'var(--neon-pink)', fontSize: '11px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
                   >
                     <Trash2 size={12} /> 清空
@@ -1293,13 +1311,13 @@ export default function App() {
                 )}
               </div>
 
-              {logs.length === 0 ? (
+              {todayLogs.length === 0 ? (
                 <div style={{ padding: '20px 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
                   今日暂无打卡，快去大转盘决策或 AI 识图记账吧！
                 </div>
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '200px', overflowY: 'auto' }}>
-                  {logs.map(log => {
+                  {todayLogs.map(log => {
                     const lowFatCheck = profile.lowFatCholesterolDiet ? checkLowFatSafety(log.foodName) : null;
                     const gastricCheck = profile.gastricFriendlyDiet ? checkGastricSafety(log.foodName) : null;
                     return (
@@ -2130,71 +2148,248 @@ export default function App() {
         )}
 
         {/* TAB 4: 历史记录 LOGS */}
-        {activeTab === 'logs' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ textAlign: 'center' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '800' }}>今日摄入明细</h2>
-              <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                今日已摄入卡路里及各类营养素详情汇总
-              </p>
-            </div>
-
-            <div className="glass-card" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-              <div style={{ textAlign: 'center', borderRight: '1px solid var(--panel-border)', paddingRight: '10px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>今日已摄入热量</span>
-                <h3 style={{ fontSize: '24px', fontWeight: '800', marginTop: '5px', fontFamily: 'monospace' }}>
-                  {totalCalories} <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>kcal</span>
-                </h3>
+        {activeTab === 'logs' && (() => {
+          const selectedDateStart = selectedDate;
+          const selectedLogs = logs.filter(l => new Date(l.timestamp).setHours(0, 0, 0, 0) === selectedDateStart);
+          const selectedCals = selectedLogs.reduce((sum, l) => sum + l.calories, 0);
+          const isOverBudget = selectedCals > profile.calorieBudget;
+          const formattedDate = new Date(selectedDate).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+          
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              <div style={{ textAlign: 'center' }}>
+                <h2 style={{ fontSize: '20px', fontWeight: '800' }}>打卡历程与日历</h2>
+                <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  查看每日摄入是否吃超标或存在热量赤字缺口
+                </p>
               </div>
-              <div style={{ textAlign: 'center', paddingLeft: '10px' }}>
-                <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>今日消耗赤字</span>
-                <h3 style={{ fontSize: '24px', fontWeight: '800', marginTop: '5px', color: 'var(--neon-green)', fontFamily: 'monospace' }}>
-                  {Math.max(0, profile.calorieBudget - totalCalories)} <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>kcal</span>
-                </h3>
+
+              {/* 日历组件 */}
+              <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: '700', borderLeft: '3px solid var(--neon-cyan)', paddingLeft: '8px' }}>
+                    饮食月历
+                  </h4>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <button 
+                      onClick={() => {
+                        if (currentMonth === 0) {
+                          setCurrentMonth(11);
+                          setCurrentYear(prev => prev - 1);
+                        } else {
+                          setCurrentMonth(prev => prev - 1);
+                        }
+                      }}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                    >
+                      ◀
+                    </button>
+                    <span style={{ fontSize: '13px', fontWeight: 'bold' }}>{currentYear}年 {currentMonth + 1}月</span>
+                    <button 
+                      onClick={() => {
+                        if (currentMonth === 11) {
+                          setCurrentMonth(0);
+                          setCurrentYear(prev => prev + 1);
+                        } else {
+                          setCurrentMonth(prev => prev + 1);
+                        }
+                      }}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: '14px', fontWeight: 'bold' }}
+                    >
+                      ▶
+                    </button>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '6px', textAlign: 'center' }}>
+                  {['日', '一', '二', '三', '四', '五', '六'].map(w => (
+                    <span key={w} style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 'bold', paddingBottom: '4px' }}>{w}</span>
+                  ))}
+                  
+                  {(() => {
+                    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+                    const firstDay = new Date(currentYear, currentMonth, 1).getDay();
+                    const cells = [];
+                    
+                    for (let i = 0; i < firstDay; i++) {
+                      cells.push(<div key={`empty-${i}`} />);
+                    }
+                    
+                    for (let day = 1; day <= daysInMonth; day++) {
+                      const cellDate = new Date(currentYear, currentMonth, day);
+                      const cellTimestamp = cellDate.setHours(0, 0, 0, 0);
+                      const isSelected = selectedDate === cellTimestamp;
+                      const isToday = new Date().setHours(0, 0, 0, 0) === cellTimestamp;
+                      
+                      const dayLogs = logs.filter(log => new Date(log.timestamp).setHours(0, 0, 0, 0) === cellTimestamp);
+                      const dayCals = dayLogs.reduce((sum, log) => sum + log.calories, 0);
+                      const hasLogs = dayLogs.length > 0;
+                      const dayOver = dayCals > profile.calorieBudget;
+                      
+                      let bg = 'transparent';
+                      let border = '1px solid transparent';
+                      let color = 'var(--text-primary)';
+                      
+                      if (isSelected) {
+                        border = '2px solid var(--neon-orange)';
+                      } else if (isToday) {
+                        border = '1px dashed var(--text-secondary)';
+                      }
+                      
+                      if (hasLogs) {
+                        if (dayOver) {
+                          bg = 'rgba(217, 83, 79, 0.15)'; // 超标：浅红
+                          color = 'var(--neon-purple)';
+                        } else {
+                          bg = 'rgba(124, 169, 130, 0.15)'; // 正常：浅绿
+                          color = 'var(--neon-cyan)';
+                        }
+                      }
+                      
+                      cells.push(
+                        <div 
+                          key={`day-${day}`}
+                          onClick={() => setSelectedDate(cellTimestamp)}
+                          style={{
+                            aspectRatio: '1',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            borderRadius: '8px',
+                            background: bg,
+                            border: border,
+                            color: color,
+                            cursor: 'pointer',
+                            position: 'relative',
+                            transition: 'all 0.2s ease',
+                            fontSize: '13px',
+                            fontWeight: isSelected || isToday ? 'bold' : 'normal'
+                          }}
+                        >
+                          <span>{day}</span>
+                          {hasLogs && (
+                            <span style={{ 
+                              fontSize: '8px', 
+                              transform: 'scale(0.85)',
+                              marginTop: '1px',
+                              color: dayOver ? 'var(--neon-purple)' : 'var(--neon-cyan)',
+                              opacity: 0.9,
+                              fontWeight: '600'
+                            }}>
+                              {dayCals}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+                    
+                    return cells;
+                  })()}
+                </div>
+
+                <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', fontSize: '11px', color: 'var(--text-secondary)', borderTop: '1px solid var(--panel-border)', paddingTop: '10px', marginTop: '5px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'rgba(124, 169, 130, 0.15)', border: '1px solid var(--neon-cyan)' }} />
+                    <span>有缺口 (符合预算)</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '2px', background: 'rgba(217, 83, 79, 0.15)', border: '1px solid var(--neon-purple)' }} />
+                    <span>吃超标了</span>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {(['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).map((meal, index) => {
-                const mealLogs = logs.filter(l => l.mealType === meal);
-                const mealCals = mealLogs.reduce((sum, l) => sum + l.calories, 0);
-                
-                return (
-                  <div key={meal} style={{ borderBottom: index === 3 ? 'none' : '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: index === 3 ? '0' : '12px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{
-                          width: '8px', height: '8px', borderRadius: '50%',
-                          background: meal === 'breakfast' ? 'var(--neon-cyan)' : meal === 'lunch' ? 'var(--neon-green)' : meal === 'dinner' ? 'var(--neon-purple)' : 'var(--neon-orange)'
-                        }} />
-                        <strong style={{ fontSize: '14px', textTransform: 'capitalize' }}>
-                          {meal === 'breakfast' ? '早餐' : meal === 'lunch' ? '午餐' : meal === 'dinner' ? '晚餐' : '加餐/零食'}
-                        </strong>
-                      </div>
-                      <span style={{ fontSize: '13px', fontWeight: 'bold', fontFamily: 'monospace' }}>{mealCals} kcal</span>
-                    </div>
+              {/* 当日数据卡片 */}
+              <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: '700', borderLeft: '3px solid var(--neon-orange)', paddingLeft: '8px' }}>
+                    {formattedDate} 摄入明细
+                  </h4>
+                  {selectedLogs.length > 0 && (
+                    <button 
+                      onClick={() => {
+                        if (window.confirm(`确认清除 ${formattedDate} 的所有饮食记录吗？`)) {
+                          setLogs(prev => prev.filter(log => new Date(log.timestamp).setHours(0, 0, 0, 0) !== selectedDateStart));
+                        }
+                      }}
+                      style={{ background: 'none', border: 'none', color: 'var(--neon-purple)', fontSize: '11px', cursor: 'pointer' }}
+                    >
+                      清空当天
+                    </button>
+                  )}
+                </div>
 
-                    {mealLogs.length === 0 ? (
-                      <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>暂无记录</span>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginTop: '5px' }}>
+                  <div style={{ textAlign: 'center', borderRight: '1px solid var(--panel-border)', paddingRight: '10px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>当日已摄入</span>
+                    <h3 style={{ fontSize: '22px', fontWeight: '800', marginTop: '5px', fontFamily: 'monospace' }}>
+                      {selectedCals} <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>kcal</span>
+                    </h3>
+                  </div>
+                  <div style={{ textAlign: 'center', paddingLeft: '10px' }}>
+                    {isOverBudget ? (
+                      <>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>吃超标热量</span>
+                        <h3 style={{ fontSize: '22px', fontWeight: '800', marginTop: '5px', color: 'var(--neon-purple)', fontFamily: 'monospace' }}>
+                          {selectedCals - profile.calorieBudget} <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>kcal</span>
+                        </h3>
+                      </>
                     ) : (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        {mealLogs.map(log => (
-                          <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', paddingLeft: '14px', color: 'var(--text-secondary)' }}>
-                            <span>{log.foodName} ({log.amount}g)</span>
-                            <div style={{ display: 'flex', gap: '10px' }}>
-                              <span>{log.calories} kcal</span>
-                              <button onClick={() => deleteLog(log.id)} style={{ background: 'none', border: 'none', color: 'var(--neon-pink)', cursor: 'pointer' }}>✕</button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
+                      <>
+                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>热量赤字缺口</span>
+                        <h3 style={{ fontSize: '22px', fontWeight: '800', marginTop: '5px', color: 'var(--neon-cyan)', fontFamily: 'monospace' }}>
+                          {profile.calorieBudget - selectedCals} <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>kcal</span>
+                        </h3>
+                      </>
                     )}
                   </div>
-                );
-              })}
+                </div>
+              </div>
+
+              {/* 详细餐次列表 */}
+              <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                {(['breakfast', 'lunch', 'dinner', 'snack'] as MealType[]).map((meal, idx) => {
+                  const mealLogs = selectedLogs.filter(l => l.mealType === meal);
+                  const mealCals = mealLogs.reduce((sum, l) => sum + l.calories, 0);
+                  
+                  return (
+                    <div key={meal} style={{ borderBottom: idx === 3 ? 'none' : '1px solid rgba(255, 255, 255, 0.05)', paddingBottom: idx === 3 ? '0' : '12px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{
+                            width: '8px', height: '8px', borderRadius: '50%',
+                            background: meal === 'breakfast' ? 'var(--neon-cyan)' : meal === 'lunch' ? 'var(--neon-green)' : meal === 'dinner' ? 'var(--neon-purple)' : 'var(--neon-orange)'
+                          }} />
+                          <strong style={{ fontSize: '14px' }}>
+                            {meal === 'breakfast' ? '早餐' : meal === 'lunch' ? '午餐' : meal === 'dinner' ? '晚餐' : '加餐/零食'}
+                          </strong>
+                        </div>
+                        <span style={{ fontSize: '13px', fontWeight: 'bold', fontFamily: 'monospace' }}>{mealCals} kcal</span>
+                      </div>
+
+                      {mealLogs.length === 0 ? (
+                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>暂无记录</span>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                          {mealLogs.map(log => (
+                            <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', paddingLeft: '14px', color: 'var(--text-secondary)' }}>
+                              <span>{log.foodName} ({log.amount}g)</span>
+                              <div style={{ display: 'flex', gap: '10px' }}>
+                                <span>{log.calories} kcal</span>
+                                <button onClick={() => deleteLog(log.id)} style={{ background: 'none', border: 'none', color: 'var(--neon-purple)', cursor: 'pointer' }}>✕</button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* TAB 4.5: 冰箱 FRIDGE */}
         {activeTab === 'fridge' && (
