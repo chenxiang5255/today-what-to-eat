@@ -114,6 +114,7 @@ export default function App() {
   });
 
   const [newFridgeItem, setNewFridgeItem] = useState('');
+  const [fridgeRecipeCount, setFridgeRecipeCount] = useState<number>(1);
 
   useEffect(() => {
     localStorage.setItem('fitlife_fridge', JSON.stringify(fridgeItems));
@@ -2254,12 +2255,39 @@ export default function App() {
                 )}
               </div>
 
+              {/* 菜品数量选择 */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '12px', padding: '12px 0 0 0', borderTop: '1px dashed var(--panel-border)' }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>想做几个菜？</span>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  {[1, 2, 3, 4].map((num) => (
+                    <button
+                      key={num}
+                      onClick={() => setFridgeRecipeCount(num)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: '20px',
+                        fontSize: '12px',
+                        border: '1px solid',
+                        borderColor: fridgeRecipeCount === num ? 'var(--neon-purple)' : 'var(--panel-border)',
+                        background: fridgeRecipeCount === num ? 'rgba(168, 85, 247, 0.2)' : 'transparent',
+                        color: fridgeRecipeCount === num ? 'var(--neon-purple)' : 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontWeight: fridgeRecipeCount === num ? 'bold' : 'normal',
+                        transition: 'all 0.2s ease'
+                      }}
+                    >
+                      {num} 个菜
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <button 
                 className="btn-neon btn-neon-purple"
                 style={{ width: '100%', padding: '14px', marginTop: '15px', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px' }}
                 onClick={() => {
                   setScanMode('text');
-                  setTextInput(`看看我的冰箱里有这些食材：${fridgeItems.join('、')}。请帮我用这些食材推荐一道菜（不要太复杂），并估算大致的卡路里和三大营养素。`);
+                  setTextInput(`看看我的冰箱里有这些食材：${fridgeItems.join('、')}。请帮我用这些食材推荐 ${fridgeRecipeCount} 道不同的菜（不要太复杂，分条列出），并估算每道菜的大致卡路里和三大营养素。`);
                   setActiveTab('scan');
                 }}
                 disabled={fridgeItems.length === 0}
