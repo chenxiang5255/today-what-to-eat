@@ -903,6 +903,11 @@ export default function App() {
     setNewFood({ name: '', calories: '', protein: '', carbs: '', fat: '', category: 'protein', isFatLossFriendly: true, sourceType: 'both' });
   };
 
+  // 计算当前选中的卡路里状态（是否超标）
+  const isOverLimit = activeTab === 'logs'
+    ? (logs.filter(l => new Date(l.timestamp).setHours(0, 0, 0, 0) === selectedDate).reduce((sum, l) => sum + l.calories, 0) > profile.calorieBudget)
+    : (todayLogs.reduce((sum, l) => sum + l.calories, 0) > profile.calorieBudget);
+
   return (
     <div className="app-shell">
       {/* 头部 Topbar */}
@@ -924,9 +929,30 @@ export default function App() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            boxShadow: '0 4px 10px rgba(140, 90, 53, 0.2)'
+            boxShadow: isOverLimit 
+              ? '0 4px 10px rgba(217, 83, 79, 0.3)' 
+              : '0 4px 10px rgba(124, 169, 130, 0.3)',
+            border: isOverLimit
+              ? '1px solid var(--neon-purple)'
+              : '1px solid var(--neon-cyan)',
+            background: isOverLimit
+              ? 'rgba(217, 83, 79, 0.05)'
+              : 'rgba(124, 169, 130, 0.05)',
+            transition: 'all 0.5s ease'
           }}>
-            <img src="/pwa-192x192.png" alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            <img 
+              src="/pwa-192x192.png" 
+              alt="logo" 
+              style={{ 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'contain',
+                filter: isOverLimit
+                  ? 'sepia(1) saturate(5) hue-rotate(320deg)'
+                  : 'sepia(1) saturate(4) hue-rotate(75deg)',
+                transition: 'filter 0.5s ease'
+              }} 
+            />
           </div>
           <span style={{ fontSize: '18px', fontWeight: '800', letterSpacing: '0.5px' }} className="gradient-title">
             今天吃什么
